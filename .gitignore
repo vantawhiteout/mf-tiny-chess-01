@@ -1,5 +1,7 @@
-# Build sources and local test artifacts are not part of the submitted tree.
+# Build sources, system prompt and local test artifacts are not part of the submitted tree.
 engine.py
 packed.py
+system_prompt.txt
+run_system_prompt.txt
 __pycache__/
 *.pyc
