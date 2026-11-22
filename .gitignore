@@ -1,0 +1,5 @@
+# Build sources and local test artifacts are not part of the submitted tree.
+engine.py
+packed.py
+__pycache__/
+*.pyc

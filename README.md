@@ -4,19 +4,19 @@
 [![rank](https://make.fun/badge/tiny-chess-01/vantawhiteout/mf-tiny-chess-01/rank.svg)](https://make.fun/bounty/tiny-chess-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=tiny-chess-01)
 [![reward](https://make.fun/badge/tiny-chess-01/vantawhiteout/mf-tiny-chess-01/reward.svg)](https://make.fun/bounty/tiny-chess-01?utm_source=github&utm_medium=readme&utm_campaign=tiny-chess-01)
 
-A deterministic 4 KB Python chess engine: 0x88 board, tapered PeSTO evaluation,
-alpha-beta search with a transposition table, quiescence, null-move pruning and
-late-move reductions. Each move searches a fixed 120,000 nodes, so a replay plays
-exactly the same games.
+A 4 KB chess engine: 0x88 board, incremental Zobrist hashing, tapered
+evaluation and a deterministic alpha-beta search with quiescence, a
+transposition table, killers, null-move pruning and late-move reductions.
+It searches a fixed node budget per move, so the replay matches the live game.
 
 ## Run it
 
 ```sh
-python main.py
+python3.13 main.py
 ```
 
-The engine talks to the judge environment at `MAKEFUN_ENV_URL` using the
-`/game`, `/move` and `/resign` JSON routes.
+The engine talks to the make.fun env at `$MAKEFUN_ENV_URL`; it is not an
+interactive chess program.
 
 ---
 
