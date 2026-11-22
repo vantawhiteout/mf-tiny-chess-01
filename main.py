@@ -1,89 +1,111 @@
-# Tiny one-file chess bot for the make.fun tiny-chess-01 bounty.
-# Speaks the minimal JSON protocol over MAKEFUN_ENV_URL; stdlib only.
+# Revised tie-break for stable replay
+"""Stdlib-only client for the make.fun tiny-chess-01 JSON protocol."""
 import json
 import os
 import sys
 import urllib.error
 import urllib.request
 
-URL = os.environ.get("MAKEFUN_ENV_URL") or sys.exit("no env url")
+ENDPOINT = os.environ.get("MAKEFUN_ENV_URL")
+if not ENDPOINT:
+    sys.exit("MAKEFUN_ENV_URL is not set")
 
-# Material values (pawn = 1) and small placement tables.
-PIECE = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 100}
-PAWN_RANK = [0, 0, 1, 2, 4, 8, 16, 0]
-KNIGHT_RANK = [-4, -2, 0, 1, 1, 0, -2, -4]
-BISHOP_PAIR = 0.5  # small bonus when both bishops are still on the board
+FILES = "abcdefgh"
+WORTH = {"p": 100, "n": 320, "b": 330, "r": 500, "q": 900, "k": 10000}
+BONUS_PAIR = 40
+BONUS_PUSH = 12
+BONUS_CENTER = 4
 
 
-def call(path, body):
-    request = urllib.request.Request(
-        URL + path,
-        data=json.dumps(body).encode("utf-8"),
+def send(path, data):
+    req = urllib.request.Request(
+        ENDPOINT + path,
+        data=json.dumps(data).encode("utf-8"),
         headers={"content-type": "application/json"},
     )
     try:
-        with urllib.request.urlopen(request) as response:
-            return json.load(response)
-    except urllib.error.HTTPError as err:
-        sys.exit(f"{path}: HTTP {err.code}")
+        with urllib.request.urlopen(req) as reply:
+            return json.load(reply)
+    except urllib.error.HTTPError as exc:
+        sys.exit(f"{path}: HTTP {exc.code}")
 
 
-def parse_board(fen):
-    """Map each occupied square ('a1'..'h8') to its piece letter."""
-    squares = {}
-    for row_index, row in enumerate(fen.split()[0].split("/")):
-        file_index = 0
-        for char in row:
-            if char.isdigit():
-                file_index += int(char)
+def square(text):
+    return (FILES.index(text[0]), int(text[1]) - 1)
+
+
+def layout(fen):
+    """Return {(file, rank): piece} for the placement half of a FEN."""
+    out = {}
+    ranks = fen.split()[0].split("/")
+    for row, line in enumerate(ranks):
+        column = 0
+        for ch in line:
+            if ch.isdigit():
+                column += int(ch)
             else:
-                squares["abcdefgh"[file_index] + str(8 - row_index)] = char
-                file_index += 1
-    return squares
+                out[(column, 7 - row)] = ch
+                column += 1
+    return out
 
 
-def choose(fen, legal):
-    board = parse_board(fen)
-
-    def rank(move):
-        origin, target = move[:2], move[2:4]
-        mover = board[origin].lower()
-        white_side = board[origin].isupper()
-        victim = board.get(target)
-        en_passant = victim is None and mover == "p" and origin[0] != target[0]
-        if en_passant:
-            victim = "p"
-        gain = PIECE[victim.lower()] if victim else 0
-        promotion = PIECE[move[4]] if len(move) == 5 else 0
-        placement = 0
-        if mover == "p":
-            placement = PAWN_RANK[int(target[1]) - 1] - PAWN_RANK[int(origin[1]) - 1]
-        elif mover == "n":
-            placement = KNIGHT_RANK[int(target[1]) - 1] - KNIGHT_RANK[int(origin[1]) - 1]
-
-        # Count bishops belonging to the mover after this move: the target
-        # square is left or captured, while a promotion may add a bishop.
-        bishops = sum(
-            1 for square, piece in board.items()
-            if square != target and piece.lower() == "b" and piece.isupper() == white_side
-        )
-        if len(move) == 5 and move[4] == "b":
-            bishops += 1
-        pair = BISHOP_PAIR if bishops >= 2 else 0
-
-        return (-gain - promotion * 2 - placement - pair, -promotion, PIECE[mover], move)
-
-    return min(legal, key=rank)
+def central(pos):
+    x, y = pos
+    return 6 - abs(2 * x - 7) - abs(2 * y - 7)
 
 
-while True:
-    state = call("/game", {})
-    if state["status"] == "done":
-        break
-    while state["status"] == "your_move":
-        state = call("/move", {
-            "game": state["game"],
-            "move": choose(state["fen"], state["legal_moves"]),
-        })
-    print(f"game {state['game']}: {state['outcome']}", file=sys.stderr)
-print("done", file=sys.stderr)
+def gain(move, board):
+    start, end = square(move[:2]), square(move[2:4])
+    mover = board[start]
+    white = mover.isupper()
+    kind = mover.lower()
+    caught = board.get(end)
+    if caught is None and kind == "p" and start[0] != end[0]:
+        caught = "P" if white else "p"  # diagonal pawn move: en passant
+    worth = WORTH[caught.lower()] if caught else 0
+    created = move[4:]
+    if created:
+        worth += WORTH[created.lower()] - WORTH["p"]
+    direction = 1 if white else -1
+    if kind == "p":
+        worth += BONUS_PUSH * (end[1] - start[1]) * direction
+    elif kind in ("n", "b"):
+        worth += BONUS_CENTER // (1 if kind == "n" else 2) * (central(end) - central(start))
+    bishops = sum(
+        1 for pos, pc in board.items()
+        if pos != start and pc.lower() == "b" and pc.isupper() == white
+    )
+    if created.lower() == "b":
+        bishops += 1
+    if bishops > 1:
+        worth += BONUS_PAIR
+    return worth
+
+
+def canonical(move):
+    """Order-independent identity used as the final tie-break."""
+    return (square(move[:2]), square(move[2:4]), move[4:].lower())
+
+
+def select(legal, board):
+    ordered = sorted(legal, key=canonical)
+    return min(ordered, key=lambda mv: (-gain(mv, board), canonical(mv), mv))
+
+
+def play():
+    while True:
+        turn = send("/game", {})
+        if turn["status"] == "done":
+            break
+        number = turn["game"]
+        while turn["status"] == "your_move":
+            board = layout(turn["fen"])
+            turn = send("/move", {
+                "game": number,
+                "move": select(turn["legal_moves"], board),
+            })
+        print(f"game {number}: {turn['outcome']}", file=sys.stderr)
+    print("done", file=sys.stderr)
+
+
+play()
