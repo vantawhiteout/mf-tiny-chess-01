@@ -1,62 +1,89 @@
-# Compact chess entry for tiny-chess-01 (MIT). One-file engine, stdlib only.
-import json, os, sys, urllib.error, urllib.request
+# Tiny one-file chess bot for the make.fun tiny-chess-01 bounty.
+# Speaks the minimal JSON protocol over MAKEFUN_ENV_URL; stdlib only.
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
 
-U = os.environ.get("MAKEFUN_ENV_URL") or sys.exit("no env url")
-V = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 100}
-# Tiny piece-square bonuses by rank for pawns and knights.
-PR = [0, 0, 1, 2, 4, 8, 16, 0]
-NK = [-4, -2, 0, 1, 1, 0, -2, -4]
+URL = os.environ.get("MAKEFUN_ENV_URL") or sys.exit("no env url")
+
+# Material values (pawn = 1) and small placement tables.
+PIECE = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 100}
+PAWN_RANK = [0, 0, 1, 2, 4, 8, 16, 0]
+KNIGHT_RANK = [-4, -2, 0, 1, 1, 0, -2, -4]
+BISHOP_PAIR = 0.5  # small bonus when both bishops are still on the board
 
 
-def post(p, b):
-    r = urllib.request.Request(U + p, data=json.dumps(b).encode(), headers={"content-type": "application/json"})
+def call(path, body):
+    request = urllib.request.Request(
+        URL + path,
+        data=json.dumps(body).encode("utf-8"),
+        headers={"content-type": "application/json"},
+    )
     try:
-        with urllib.request.urlopen(r) as x:
-            return json.load(x)
-    except urllib.error.HTTPError as e:
-        sys.exit(f"{p}: HTTP {e.code}")
+        with urllib.request.urlopen(request) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as err:
+        sys.exit(f"{path}: HTTP {err.code}")
 
 
-def bd(f):
-    o = {}
-    for i, row in enumerate(f.split()[0].split("/")):
-        j = 0
-        for c in row:
-            if c.isdigit():
-                j += int(c)
+def parse_board(fen):
+    """Map each occupied square ('a1'..'h8') to its piece letter."""
+    squares = {}
+    for row_index, row in enumerate(fen.split()[0].split("/")):
+        file_index = 0
+        for char in row:
+            if char.isdigit():
+                file_index += int(char)
             else:
-                o["abcdefgh"[j] + str(8 - i)] = c
-                j += 1
-    return o
+                squares["abcdefgh"[file_index] + str(8 - row_index)] = char
+                file_index += 1
+    return squares
 
 
-def pick(f, legal):
-    b = bd(f)
+def choose(fen, legal):
+    board = parse_board(fen)
 
-    def rank(m):
-        a, z = m[:2], m[2:4]
-        me = b[a].lower()
-        them = b.get(z)
-        ep = them is None and me == "p" and a[0] != z[0]
-        if ep:
-            them = "p"
-        take = V[them.lower()] if them else 0
-        promo = V[m[4]] if len(m) == 5 else 0
-        bonus = 0
-        if me == "p":
-            bonus = PR[int(z[1]) - 1] - PR[int(a[1]) - 1]
-        elif me == "n":
-            bonus = NK[int(z[1]) - 1] - NK[int(a[1]) - 1]
-        return (-take - promo * 2 - bonus, -promo, V[me], m)
+    def rank(move):
+        origin, target = move[:2], move[2:4]
+        mover = board[origin].lower()
+        white_side = board[origin].isupper()
+        victim = board.get(target)
+        en_passant = victim is None and mover == "p" and origin[0] != target[0]
+        if en_passant:
+            victim = "p"
+        gain = PIECE[victim.lower()] if victim else 0
+        promotion = PIECE[move[4]] if len(move) == 5 else 0
+        placement = 0
+        if mover == "p":
+            placement = PAWN_RANK[int(target[1]) - 1] - PAWN_RANK[int(origin[1]) - 1]
+        elif mover == "n":
+            placement = KNIGHT_RANK[int(target[1]) - 1] - KNIGHT_RANK[int(origin[1]) - 1]
+
+        # Count bishops belonging to the mover after this move: the target
+        # square is left or captured, while a promotion may add a bishop.
+        bishops = sum(
+            1 for square, piece in board.items()
+            if square != target and piece.lower() == "b" and piece.isupper() == white_side
+        )
+        if len(move) == 5 and move[4] == "b":
+            bishops += 1
+        pair = BISHOP_PAIR if bishops >= 2 else 0
+
+        return (-gain - promotion * 2 - placement - pair, -promotion, PIECE[mover], move)
 
     return min(legal, key=rank)
 
 
 while True:
-    g = post("/game", {})
-    if g["status"] == "done":
+    state = call("/game", {})
+    if state["status"] == "done":
         break
-    while g["status"] == "your_move":
-        g = post("/move", {"game": g["game"], "move": pick(g["fen"], g["legal_moves"])})
-    print(f"game {g['game']}: {g['outcome']}", file=sys.stderr)
+    while state["status"] == "your_move":
+        state = call("/move", {
+            "game": state["game"],
+            "move": choose(state["fen"], state["legal_moves"]),
+        })
+    print(f"game {state['game']}: {state['outcome']}", file=sys.stderr)
 print("done", file=sys.stderr)
