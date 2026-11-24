@@ -7,9 +7,9 @@
 A 4 KB chess engine: 0x88 board, incremental Zobrist hashing, tapered
 PeSTO evaluation and a deterministic alpha-beta search with quiescence,
 a transposition table, killers, a history table, null-move pruning and
-late-move reductions. Incremental hashes stay consistent across castling
-rights changes and promotions, and mate scores are ply-adjusted.
-It searches a fixed node budget per move, so the replay matches the live game.
+late-move reductions, with bounded quiescence and ply-adjusted mate scores.
+It searches 150,000 nodes per move, never a clock, so a replay plays the
+same moves as the live game.
 
 ## Run it
 
