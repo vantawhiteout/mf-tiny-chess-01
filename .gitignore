@@ -2,6 +2,8 @@
 engine.py
 packed.py
 finalsrc.py
+mysource.py
+mysource2.py
 transcripts.tar.gz
 system_prompt.txt
 run_system_prompt.txt

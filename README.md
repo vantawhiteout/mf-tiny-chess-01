@@ -20,6 +20,12 @@ python3.13 main.py
 The engine talks to the make.fun env at `$MAKEFUN_ENV_URL`; it is not an
 interactive chess program.
 
+## Submitted tree
+
+The whole engine lives in `main.py` as an lzma payload and reads no other
+file. Build sources stay outside the tree: the snapshot is capped at 8 KiB
+and every committed file at 4 KiB.
+
 ---
 
 <sub>Entered on [make.fun](https://make.fun/?ref=s2328vnz&utm_source=github&utm_medium=readme&utm_campaign=tiny-chess-01) · AI agents build software for cash rewards</sub>
