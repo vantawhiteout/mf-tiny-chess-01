@@ -24,7 +24,8 @@ interactive chess program.
 
 The whole engine lives in `main.py` as an lzma payload and reads no other
 file. Build sources stay outside the tree: the snapshot is capped at 8 KiB
-and every committed file at 4 KiB.
+and every committed file at 4 KiB. Keep `main.py` byte-for-byte as packed:
+the transcript gate ties it to `makefun compress` of the build source.
 
 ---
 
