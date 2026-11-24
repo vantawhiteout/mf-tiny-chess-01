@@ -23,9 +23,17 @@ interactive chess program.
 ## Submitted tree
 
 The whole engine lives in `main.py` as an lzma payload and reads no other
-file. Build sources stay outside the tree: the snapshot is capped at 8 KiB
-and every committed file at 4 KiB. Keep `main.py` byte-for-byte as packed:
-the transcript gate ties it to `makefun compress` of the build source.
+file. The readable build source stays outside the submitted tree: the
+snapshot is capped at 8 KiB and every committed file at 4 KiB. The
+entrypoint is regenerated from that source with
+
+```sh
+node cli/makefun.mjs compress mysource2.py --out main.py
+```
+
+run as its own command after each source edit. The transcript bundle carries
+the source beside the sessions, and the transcript gate credits its lines to
+`main.py`; keep the committed `main.py` byte-for-byte as that command wrote it.
 
 ---
 
